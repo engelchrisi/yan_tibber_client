@@ -1,0 +1,16 @@
+{
+  "domain": "yan_tibber_client",
+  "name": "Yet another Tibber Client",
+  "codeowners": [
+    "@engelchrisi"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/engelchrisi/yan_tibber_client",
+  "integration_type": "hub",
+  "issue_tracker": "https://github.com/engelchrisi/yan_tibber_client/issues",
+  "requirements": [
+    "pyTibber"
+  ],
+  "version": "0.1.0"
+}
