@@ -1,15 +1,14 @@
 """All Sensors."""
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 
-from .api import TibberApi
+from custom_components.yan_tibber_client.api.api import TibberApi
 from .const import PRICE_SENSOR_NAME
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,7 +27,7 @@ SCAN_INTERVAL = timedelta(minutes=60)
 
 
 async def async_setup_platform(
-    hass: HomeAssistant, config, async_add_entities, discovery_info=None
+        hass: HomeAssistant, config, async_add_entities, discovery_info=None
 ):  # noqa: D103
     email = config.get(CONF_EMAIL)
     password = config.get(CONF_PASSWORD)
@@ -80,7 +79,7 @@ class TibberPricesSensor(Entity):  # noqa: D101
         """Update state and attributes."""
         _LOGGER.debug("Checking jwt validity")
         if self._api.check_auth():
-            data = self._api.get_price_data()
+            data = self._api.get_price_info()
             if data:
                 firstKey = next(iter(data))
                 value = data[firstKey]["cost_in_kr"] if data[firstKey] else 0

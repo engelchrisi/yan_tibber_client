@@ -152,3 +152,4 @@ cython_debug/
 .idea/
 
 IGNORE/
+test/my_secrets.py

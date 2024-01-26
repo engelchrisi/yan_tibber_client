@@ -10,7 +10,8 @@
   "integration_type": "hub",
   "issue_tracker": "https://github.com/engelchrisi/yan_tibber_client/issues",
   "requirements": [
-    "pyTibber"
+    "requests",
+    "scipy"
   ],
   "version": "0.1.0"
 }

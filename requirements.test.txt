@@ -1,4 +1,6 @@
 pytest
 pytest-cov==2.9.0
 pytest-homeassistant
+scipy
+requests
 
