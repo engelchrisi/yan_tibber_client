@@ -100,7 +100,7 @@ class TibberPricesSensor(Entity):  # noqa: D101
     @staticmethod
     def hourly_data_to_json(x: HourlyData) -> {}:  # noqa: D102
         res = {
-            "level": x.level,
+            "level": x.level.value,
             "price": TibberPricesSensor._format_price(x.price),
         }
         if x.starts_at is not None:
