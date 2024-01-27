@@ -120,9 +120,9 @@ class TibberPricesSensor(Entity):  # noqa: D101
         return res
 
     @staticmethod
-    def _format_price(price: float):
+    def _format_price(price: float) -> float:
         """Return rounded price in Cent / kWh."""
-        return (round(price * 100, 1),)
+        return round(price * 100, 1)
 
     @staticmethod
     def _format_date(dt: datetime) -> str:
