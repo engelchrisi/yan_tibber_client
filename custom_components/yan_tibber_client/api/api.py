@@ -1,6 +1,6 @@
 """Tibber API."""
 import logging
-from datetime import datetime
+from datetime import datetime, tzinfo
 from enum import Enum
 
 import numpy as np
@@ -104,9 +104,7 @@ class HourlyData:  # noqa: D101
 
     def __init__(self, level: PriceLevel, starts_at: datetime, price: float) -> None:  # noqa: D107
         self._level = level
-        self._starts_at = (
-            starts_at.replace(tzinfo=None) if starts_at is not None else None
-        )
+        self._starts_at = starts_at
         self._price = price
         self._loading_level = LoadingLevel.UNKNOWN
         self._extrema_type = ExtremaType.NONE
@@ -121,10 +119,8 @@ class Statistics:  # noqa: D101
     """Last time slot."""
     _avg_level: float  # PriceLevel
     _avg_price: float
-    _min_price: float
-    _min_price_at: datetime
-    _max_price: float
-    _max_price_at: datetime
+    _min: HourlyData
+    _max: HourlyData
 
     @property
     def start_time(self) -> datetime:  # noqa: D102
@@ -139,24 +135,16 @@ class Statistics:  # noqa: D101
         return self._avg_level
 
     @property
-    def min_price(self) -> float:  # noqa: D102
-        return self._min_price
-
-    @property
-    def min_price_at(self) -> datetime:  # noqa: D102
-        return self._min_price_at
+    def min(self) -> HourlyData:  # noqa: D102
+        return self._min
 
     @property
     def avg_price(self) -> float:  # noqa: D102
         return self._avg_price
 
     @property
-    def max_price(self) -> float:  # noqa: D102
-        return self._max_price
-
-    @property
-    def max_price_at(self) -> datetime:  # noqa: D102
-        return self._max_price_at
+    def max(self) -> HourlyData:  # noqa: D102
+        return self._max
 
     @staticmethod
     def _level_to_float(pl: PriceLevel) -> float:
@@ -177,13 +165,8 @@ class Statistics:  # noqa: D101
 
         np_arr = TibberApi.get_prices_numpy(arr)
         self._avg_price = np.mean(np_arr)
-        hld = TibberApi.absolute_maximum(arr)
-        self._max_price = hld.price
-        self._max_price_at = hld.starts_at
-
-        hld = TibberApi.absolute_minimum(arr)
-        self._min_price = hld.price
-        self._min_price_at = hld.starts_at
+        self._max = TibberApi.absolute_maximum(arr)
+        self._min = TibberApi.absolute_minimum(arr)
 
         res = []
         for x in arr:
@@ -194,8 +177,9 @@ class Statistics:  # noqa: D101
 
 
 class TibberApi:  # noqa: D101
-    def __init__(self, token) -> None:  # noqa: D107
+    def __init__(self, token: str, time_zone: tzinfo) -> None:  # noqa: D107
         self._token = token
+        self._time_zone = time_zone
 
     def get_price_info(self) -> []:  # noqa: D102
         headers = {
@@ -237,16 +221,15 @@ class TibberApi:  # noqa: D101
         )
         return res
 
-    @staticmethod
-    def filter_future_items(arr: list[HourlyData]) -> list[HourlyData]:
+    def filter_future_items(self, arr: list[HourlyData]) -> list[HourlyData]:
         """Filter out all items with startsAt <= now."""
-        now = datetime.now()
+        now = datetime.now(self._time_zone)
 
         filtered_values: list[HourlyData] = [x for x in arr if x.starts_at > now]
         return filtered_values
 
     @staticmethod
-    def get_prices_numpy(arr: list[HourlyData]) -> np.array:
+    def get_prices_numpy(arr: list[HourlyData]) -> np.array:  # noqa: D102
         res = []
         for x in arr:
             res.append(x.price)
@@ -320,6 +303,7 @@ class TibberApi:  # noqa: D101
             if res is None or x.price > res.price:
                 res = x
 
+        res.extrema_type = ExtremaType.MAX
         return res
 
     @staticmethod

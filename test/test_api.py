@@ -1,33 +1,43 @@
 import json
+from datetime import datetime
 from unittest import TestCase
+
+import pytz
 
 from custom_components.yan_tibber_client.api.api import TibberApi, Statistics
 from test.my_secrets import tibber_api_token
 
 
 class TestTibberApi(TestCase):
+    DEFAULT_TIME_ZONE = pytz.timezone('Europe/Berlin')  # pytz.timezone('US/Eastern')
 
     @staticmethod
     def print_list(arr: []):
         for x in arr:
             print(x)
 
-    @staticmethod
-    def _get_today_tomorrow():
-        api = TibberApi(tibber_api_token)
+    def _get_today_tomorrow(self):
+        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         today = api.convert_to_list(price_info['today'])
         tomorrow = api.convert_to_list(price_info['tomorrow'])
         return api, today, tomorrow
 
     def test_get_price_data(self):
-        api = TibberApi(tibber_api_token)
+        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         formatted_json = json.dumps(price_info, indent=2)
         print(formatted_json)
 
+    # https://pypi.org/project/pytz/
+    def test_timezone_handling(self):
+        tibber_dt_str = '2024-01-27T00:00:00.000+01:00'
+        tdt = datetime.fromisoformat(tibber_dt_str)
+        now = datetime.now(self.DEFAULT_TIME_ZONE)
+        self.assertTrue(tdt < now)
+
     def test_get_current_price(self):
-        api = TibberApi(tibber_api_token)
+        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         current = api.convert_to_hourly(price_info['current'])
         print(current)
@@ -39,6 +49,11 @@ class TestTibberApi(TestCase):
 
     def test_filter_future_items(self):
         api, today, tomorrow = self._get_today_tomorrow()
+
+        x = today[0].starts_at
+        now = datetime.now(self.DEFAULT_TIME_ZONE)
+        self.assertTrue(x >= now or x < now)
+
         future = api.filter_future_items(today)
         future.extend(tomorrow)
         TestTibberApi.print_list(future)

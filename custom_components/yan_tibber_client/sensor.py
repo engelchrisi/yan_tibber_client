@@ -1,15 +1,17 @@
 """All Sensors."""
-import logging
 from datetime import datetime, timedelta
+import logging
 
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
+
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.util import dt as dt_util
 
 from .api.api import ExtremaType, HourlyData, LoadingLevel, Statistics, TibberApi
 from .const import PRICE_SENSOR_NAME
@@ -26,18 +28,18 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
 )
 
 # You can control the polling interval for your integration by defining a SCAN_INTERVAL constant in your platform.
-SCAN_INTERVAL = timedelta(minutes=60)
+SCAN_INTERVAL = timedelta(minutes=30)
 
 
 async def async_setup_platform(  # noqa: D103
-        hass: HomeAssistant,
-        config: ConfigType,
-        async_add_entities: AddEntitiesCallback,
-        discovery_info: DiscoveryInfoType | None = None,
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     token = config.get(CONF_TOKEN)
 
-    api = TibberApi(token)
+    api = TibberApi(token, dt_util.DEFAULT_TIME_ZONE)
 
     _LOGGER.debug("Setting up sensor(s)")
 
@@ -126,18 +128,16 @@ class TibberPricesSensor(Entity):  # noqa: D101
     @staticmethod
     def _format_date(dt: datetime) -> str:
         local_timestamp = dt_util.as_local(dt)
-        return local_timestamp.isoformat(),
+        return (local_timestamp.isoformat(),)
 
     @staticmethod
-    def _stats_to_json(x: Statistics) -> {}:  # noqa: D102
+    def _statistics_to_json(x: Statistics) -> {}:  # noqa: D102
         res = {
             "start_time": TibberPricesSensor._format_date(x.start_time),
             "end_time": TibberPricesSensor._format_date(x.end_time),
-            "min_price": TibberPricesSensor._format_price(x.min_price),
-            "min_price_at": TibberPricesSensor._format_date(x.min_price_at),
+            "min": TibberPricesSensor.hourly_data_to_json(x.min),
             "avg_price": TibberPricesSensor._format_price(x.avg_price),
-            "max_price": TibberPricesSensor._format_price(x.max_price),
-            "max_price_at": TibberPricesSensor._format_date(x.max_price_at),
+            "max": TibberPricesSensor.hourly_data_to_json(x.max),
         }
         return res
 
@@ -148,7 +148,7 @@ class TibberPricesSensor(Entity):  # noqa: D101
         price_info = api.get_price_info()
 
         self._current = api.convert_to_hourly(price_info["current"])
-        self._state = self._current.price
+        self._state = TibberPricesSensor._format_price(self._current.price)
 
         self._today = api.convert_to_list(price_info["today"])
         self._stats_today = Statistics(self._today)
@@ -169,14 +169,16 @@ class TibberPricesSensor(Entity):  # noqa: D101
             self._current
         )
 
-        self._state_attributes["sep1"] = "---------------------------------------"
-        self._state_attributes["stats_today"] = self._stats_to_json(self._stats_today)
+        self._state_attributes["sep1"] = "========================================"
+        self._state_attributes["today_stats"] = self._statistics_to_json(
+            self._stats_today
+        )
         self._state_attributes["today"] = self.convert_to_json_list(self._today)
 
         # tomorrow value appears around 12:00
-        self._state_attributes["sep2"] = "---------------------------------------"
+        self._state_attributes["sep2"] = "========================================"
         if self._tomorrow is not None and len(self._tomorrow) > 0:
-            self._state_attributes["stats_tomorrow"] = self._stats_to_json(
+            self._state_attributes["tomorrow_stats"] = self._statistics_to_json(
                 self._stats_tomorrow
             )
             self._state_attributes["tomorrow"] = self.convert_to_json_list(
@@ -186,6 +188,8 @@ class TibberPricesSensor(Entity):  # noqa: D101
             self._state_attributes["stats_tomorrow"] = None
             self._state_attributes["tomorrow"] = []
 
-        self._state_attributes["sep3"] = "---------------------------------------"
-        self._state_attributes["stats_future"] = self._stats_to_json(self._stats_future)
+        self._state_attributes["sep3"] = "========================================"
+        self._state_attributes["future_stats"] = self._statistics_to_json(
+            self._stats_future
+        )
         self._state_attributes["future"] = self.convert_to_json_list(self._future)

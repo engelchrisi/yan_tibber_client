@@ -11,7 +11,8 @@
   "issue_tracker": "https://github.com/engelchrisi/yan_tibber_client/issues",
   "requirements": [
     "requests",
-    "scipy"
+    "scipy",
+    "pytz"
   ],
   "version": "0.2.0"
 }
