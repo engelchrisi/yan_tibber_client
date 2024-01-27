@@ -1,12 +1,12 @@
 """All Sensors."""
-import logging
 from datetime import datetime, timedelta
+import logging
 
-import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
+import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -48,14 +48,6 @@ async def async_setup_platform(  # noqa: D103
 
 
 class TibberPricesSensor(Entity):  # noqa: D101
-    _current: HourlyData
-    _today: list[HourlyData]
-    _stats_today: Statistics
-    _tomorrow: list[HourlyData]
-    _stats_tomorrow: Statistics
-    _future: list[HourlyData]
-    _stats_future: Statistics
-
     def __init__(self, api: TibberApi) -> None:  # noqa: D107
         self._name = PRICE_SENSOR_NAME
         self._icon = "mdi:currency-eur"
@@ -63,14 +55,6 @@ class TibberPricesSensor(Entity):  # noqa: D101
         self._state_attributes = {}
         self._unit_of_measurement = "Cent/kWh"
         self._api = api
-
-        self._current = None
-        self._today = []
-        self._stats_today = None
-        self._tomorrow = []
-        self._stats_tomorrow = None
-        self._future = []
-        self._stats_future = None
 
     @property
     def name(self):
@@ -142,47 +126,50 @@ class TibberPricesSensor(Entity):  # noqa: D101
 
     def update(self):
         """Update state and attributes."""
-        _LOGGER.debug("Start TibberPricesSensor.update")
+        _LOGGER.debug("Start update")
         api = self._api
         now = datetime.now(dt_util.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
+        _LOGGER.debug("Finished rest call")
 
-        self._current = api.convert_to_hourly(price_info["current"])
-        self._state = TibberPricesSensor._format_price(self._current.price)
+        current = api.convert_to_hourly(price_info["current"])
+        self._state = TibberPricesSensor._format_price(current.price)
 
-        self._today = api.convert_to_list(price_info["today"])
-        self._stats_today = Statistics(self._today)
+        today = api.convert_to_list(price_info["today"])
+        stats_today = Statistics(today)
 
-        self._tomorrow = api.convert_to_list(price_info["tomorrow"])
+        tomorrow = api.convert_to_list(price_info["tomorrow"])
         # tomorrow value appears around 12:00
-        if self._tomorrow is not None and len(self._tomorrow) > 0:
-            self._stats_tomorrow = Statistics(self._tomorrow)
+        if tomorrow is not None and len(tomorrow) > 0:
+            stats_tomorrow = Statistics(tomorrow)
         else:
-            self._stats_tomorrow = None
+            stats_tomorrow = None
 
-        self._future = api.filter_future_items(self._today)
-        self._future.extend(self._tomorrow)
-        self._stats_future = Statistics(self._future)
+        future = api.filter_future_items(today)
+        future.extend(tomorrow)
+        stats_future = Statistics(future)
 
         self._state_attributes["last_update"] = TibberPricesSensor._format_date(now)
-        self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(self._current)
+        self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(
+            current
+        )
 
         self._state_attributes["sep1"] = "========================================"
-        self._state_attributes["today_stats"] = self._statistics_to_json(self._stats_today)
-        self._state_attributes["today"] = self.convert_to_json_list(self._today)
+        self._state_attributes["today_stats"] = self._statistics_to_json(stats_today)
+        self._state_attributes["today"] = self.convert_to_json_list(today)
 
         # tomorrow value appears around 12:00
         self._state_attributes["sep2"] = "========================================"
-        if self._tomorrow is not None and len(self._tomorrow) > 0:
-            self._state_attributes["tomorrow_stats"] = self._statistics_to_json(self._stats_tomorrow)
-            self._state_attributes["tomorrow"] = self.convert_to_json_list(self._tomorrow)
+        if tomorrow is not None and len(tomorrow) > 0:
+            self._state_attributes["tomorrow_stats"] = self._statistics_to_json(
+                stats_tomorrow
+            )
+            self._state_attributes["tomorrow"] = self.convert_to_json_list(tomorrow)
         else:
             self._state_attributes["stats_tomorrow"] = None
             self._state_attributes["tomorrow"] = []
 
         self._state_attributes["sep3"] = "========================================"
-        self._state_attributes["future_stats"] = self._statistics_to_json(
-            self._stats_future
-        )
-        self._state_attributes["future"] = self.convert_to_json_list(self._future)
-        _LOGGER.debug("EOF TibberPricesSensor.update")
+        self._state_attributes["future_stats"] = self._statistics_to_json(stats_future)
+        self._state_attributes["future"] = self.convert_to_json_list(future)
+        _LOGGER.debug("EOF update")
