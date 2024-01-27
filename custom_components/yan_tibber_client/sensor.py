@@ -1,13 +1,12 @@
 """All Sensors."""
-from datetime import datetime, timedelta
 import logging
+from datetime import datetime, timedelta
 
+import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
-
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -32,10 +31,10 @@ SCAN_INTERVAL = timedelta(minutes=30)
 
 
 async def async_setup_platform(  # noqa: D103
-    hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+        hass: HomeAssistant,
+        config: ConfigType,
+        async_add_entities: AddEntitiesCallback,
+        discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     token = config.get(CONF_TOKEN)
 
@@ -143,8 +142,9 @@ class TibberPricesSensor(Entity):  # noqa: D101
 
     def update(self):
         """Update state and attributes."""
-        _LOGGER.debug("TibberPricesSensor.update")
+        _LOGGER.debug("Start TibberPricesSensor.update")
         api = self._api
+        now = datetime.now(dt_util.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
 
         self._current = api.convert_to_hourly(price_info["current"])
@@ -164,26 +164,18 @@ class TibberPricesSensor(Entity):  # noqa: D101
         self._future.extend(self._tomorrow)
         self._stats_future = Statistics(self._future)
 
-        self._state_attributes["last_update"] = datetime.now()
-        self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(
-            self._current
-        )
+        self._state_attributes["last_update"] = TibberPricesSensor._format_date(now)
+        self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(self._current)
 
         self._state_attributes["sep1"] = "========================================"
-        self._state_attributes["today_stats"] = self._statistics_to_json(
-            self._stats_today
-        )
+        self._state_attributes["today_stats"] = self._statistics_to_json(self._stats_today)
         self._state_attributes["today"] = self.convert_to_json_list(self._today)
 
         # tomorrow value appears around 12:00
         self._state_attributes["sep2"] = "========================================"
         if self._tomorrow is not None and len(self._tomorrow) > 0:
-            self._state_attributes["tomorrow_stats"] = self._statistics_to_json(
-                self._stats_tomorrow
-            )
-            self._state_attributes["tomorrow"] = self.convert_to_json_list(
-                self._tomorrow
-            )
+            self._state_attributes["tomorrow_stats"] = self._statistics_to_json(self._stats_tomorrow)
+            self._state_attributes["tomorrow"] = self.convert_to_json_list(self._tomorrow)
         else:
             self._state_attributes["stats_tomorrow"] = None
             self._state_attributes["tomorrow"] = []
@@ -193,3 +185,4 @@ class TibberPricesSensor(Entity):  # noqa: D101
             self._stats_future
         )
         self._state_attributes["future"] = self.convert_to_json_list(self._future)
+        _LOGGER.debug("EOF TibberPricesSensor.update")
