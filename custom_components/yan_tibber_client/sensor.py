@@ -5,34 +5,39 @@ from datetime import datetime, timedelta
 import homeassistant.helpers.config_validation as cv
 import voluptuous as vol
 from homeassistant.components.sensor import PLATFORM_SCHEMA
-from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
+from homeassistant.const import CONF_TOKEN
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 
-from custom_components.yan_tibber_client.api.api import TibberApi
+from .api.api import ExtremaType, HourlyData, LoadingLevel, Statistics, TibberApi
 from .const import PRICE_SENSOR_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
-        vol.Required(CONF_EMAIL): cv.string,
-        vol.Required(CONF_PASSWORD): cv.string,
+        vol.Required(CONF_TOKEN): cv.string,
         # vol.Optional(CONF_DAILY_USAGE, default=True): cv.boolean,
         # vol.Optional(CONF_USAGE_DAYS, default=10): cv.positive_int,
         # vol.Optional(CONF_DATE_FORMAT, default="%b %d %Y"): cv.string,
     }
 )
 
+# You can control the polling interval for your integration by defining a SCAN_INTERVAL constant in your platform.
 SCAN_INTERVAL = timedelta(minutes=60)
 
 
-async def async_setup_platform(
-        hass: HomeAssistant, config, async_add_entities, discovery_info=None
-):  # noqa: D103
-    email = config.get(CONF_EMAIL)
-    password = config.get(CONF_PASSWORD)
+async def async_setup_platform(  # noqa: D103
+        hass: HomeAssistant,
+        config: ConfigType,
+        async_add_entities: AddEntitiesCallback,
+        discovery_info: DiscoveryInfoType | None = None,
+) -> None:
+    token = config.get(CONF_TOKEN)
 
-    api = TibberApi(email, password)
+    api = TibberApi(token)
 
     _LOGGER.debug("Setting up sensor(s)")
 
@@ -42,13 +47,29 @@ async def async_setup_platform(
 
 
 class TibberPricesSensor(Entity):  # noqa: D101
-    def __init__(self, api) -> None:  # noqa: D107
+    _current: HourlyData
+    _today: list[HourlyData]
+    _stats_today: Statistics
+    _tomorrow: list[HourlyData]
+    _stats_tomorrow: Statistics
+    _future: list[HourlyData]
+    _stats_future: Statistics
+
+    def __init__(self, api: TibberApi) -> None:  # noqa: D107
         self._name = PRICE_SENSOR_NAME
-        self._icon = "mdi:account-cash"
+        self._icon = "mdi:currency-eur"
         self._state = 0
         self._state_attributes = {}
         self._unit_of_measurement = "Cent/kWh"
         self._api = api
+
+        self._current = None
+        self._today = []
+        self._stats_today = None
+        self._tomorrow = []
+        self._stats_tomorrow = None
+        self._future = []
+        self._stats_future = None
 
     @property
     def name(self):
@@ -75,80 +96,96 @@ class TibberPricesSensor(Entity):  # noqa: D101
         """Return the unit of measurement."""
         return self._unit_of_measurement
 
+    @staticmethod
+    def hourly_data_to_json(x: HourlyData) -> {}:  # noqa: D102
+        res = {
+            "level": x.level,
+            "price": TibberPricesSensor._format_price(x.price),
+        }
+        if x.starts_at is not None:
+            res["starts_at"] = TibberPricesSensor._format_date(x.starts_at)
+        if x.loading_level is not LoadingLevel.UNKNOWN:
+            res["loading_level"] = x.loading_level
+        if x.extrema_type is not ExtremaType.NONE:
+            res["extrema_type"] = x.extrema_type
+
+        return res
+
+    @staticmethod
+    def convert_to_json_list(arr: list[HourlyData]) -> []:  # noqa: D102
+        res = []
+        for x in arr:
+            res.append(TibberPricesSensor.hourly_data_to_json(x))
+        return res
+
+    @staticmethod
+    def _format_price(price: float):
+        """Return rounded price in Cent / kWh."""
+        return (round(price * 100, 1),)
+
+    @staticmethod
+    def _format_date(dt: datetime) -> str:
+        local_timestamp = dt_util.as_local(dt)
+        return local_timestamp.isoformat(),
+
+    @staticmethod
+    def _stats_to_json(x: Statistics) -> {}:  # noqa: D102
+        res = {
+            "start_time": TibberPricesSensor._format_date(x.start_time),
+            "end_time": TibberPricesSensor._format_date(x.end_time),
+            "min_price": TibberPricesSensor._format_price(x.min_price),
+            "min_price_at": TibberPricesSensor._format_date(x.min_price_at),
+            "avg_price": TibberPricesSensor._format_price(x.avg_price),
+            "max_price": TibberPricesSensor._format_price(x.max_price),
+            "max_price_at": TibberPricesSensor._format_date(x.max_price_at),
+        }
+        return res
+
     def update(self):
         """Update state and attributes."""
-        _LOGGER.debug("Checking jwt validity")
-        if self._api.check_auth():
-            data = self._api.get_price_info()
-            if data:
-                firstKey = next(iter(data))
-                value = data[firstKey]["cost_in_kr"] if data[firstKey] else 0
-                self._state_attributes["current_month"] = value
-            spot_price_data = self._api.get_spot_price()
-            if spot_price_data:
-                _LOGGER.debug("Fetching daily prices")
-                today = datetime.now().replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-                todaysData = []
-                tomorrowsData = []
-                yesterdaysData = []
-                for d in spot_price_data["data"]:
-                    timestamp = datetime.strptime(
-                        spot_price_data["data"][d]["localtime"], "%Y-%m-%d %H:%M"
-                    )
-                    if timestamp.date() == today.date():
-                        if spot_price_data["data"][d]["price"] is not None:
-                            todaysData.append(self.make_attribute(spot_price_data, d))
-                    elif timestamp.date() == (today.date() + timedelta(days=1)):
-                        if spot_price_data["data"][d]["price"] is not None:
-                            tomorrowsData.append(
-                                self.make_attribute(spot_price_data, d)
-                            )
-                    elif timestamp.date() == (today.date() - timedelta(days=1)):
-                        if spot_price_data["data"][d]["price"] is not None:
-                            yesterdaysData.append(
-                                self.make_attribute(spot_price_data, d)
-                            )
-                self._state_attributes["current_day"] = todaysData
-                self._state_attributes["next_day"] = tomorrowsData
-                self._state_attributes["previous_day"] = yesterdaysData
+        _LOGGER.debug("TibberPricesSensor.update")
+        api = self._api
+        price_info = api.get_price_info()
+
+        self._current = api.convert_to_hourly(price_info["current"])
+        self._state = self._current.price
+
+        self._today = api.convert_to_list(price_info["today"])
+        self._stats_today = Statistics(self._today)
+
+        self._tomorrow = api.convert_to_list(price_info["tomorrow"])
+        # tomorrow value appears around 12:00
+        if self._tomorrow is not None and len(self._tomorrow) > 0:
+            self._stats_tomorrow = Statistics(self._tomorrow)
         else:
-            _LOGGER.error("Unable to log in!")
+            self._stats_tomorrow = None
 
-    def make_attribute(self, response, value):  # noqa: D102
-        if response:
-            newPoint = {}
-            today = datetime.now()
-            price = response["data"][value]["price"]
-            dt_object = datetime.strptime(
-                response["data"][value]["localtime"], "%Y-%m-%d %H:%M"
+        self._future = api.filter_future_items(self._today)
+        self._future.extend(self._tomorrow)
+        self._stats_future = Statistics(self._future)
+
+        self._state_attributes["last_update"] = datetime.now()
+        self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(
+            self._current
+        )
+
+        self._state_attributes["sep1"] = "---------------------------------------"
+        self._state_attributes["stats_today"] = self._stats_to_json(self._stats_today)
+        self._state_attributes["today"] = self.convert_to_json_list(self._today)
+
+        # tomorrow value appears around 12:00
+        self._state_attributes["sep2"] = "---------------------------------------"
+        if self._tomorrow is not None and len(self._tomorrow) > 0:
+            self._state_attributes["stats_tomorrow"] = self._stats_to_json(
+                self._stats_tomorrow
             )
-            newPoint["date"] = dt_object.strftime(self._date_format)
-            newPoint["time"] = dt_object.strftime(self._time_format)
-            if price is not None:
-                rounded = self.format_price(price)
-                newPoint["price"] = rounded
-                if dt_object.hour == today.hour and dt_object.day == today.day:
-                    self._state = rounded
-            else:
-                newPoint["price"] = 0
-            return newPoint
+            self._state_attributes["tomorrow"] = self.convert_to_json_list(
+                self._tomorrow
+            )
+        else:
+            self._state_attributes["stats_tomorrow"] = None
+            self._state_attributes["tomorrow"] = []
 
-    def format_price(self, price):  # noqa: D102
-        return round(((price / 1000) / 100), 4)
-
-    def make_data_attribute(self, name, response, nameOfPriceAttr):  # noqa: D102
-        if response:
-            points = response.get("points", None)
-            data = []
-            for point in points:
-                price = point[nameOfPriceAttr]
-                if price is not None:
-                    newPoint = {}
-                    dt_object = datetime.utcfromtimestamp(point["timestamp"])
-                    newPoint["date"] = dt_object.strftime(self._date_format)
-                    newPoint["time"] = dt_object.strftime(self._time_format)
-                    newPoint["price"] = str(price / 100)
-                    data.append(newPoint)
-            self._state_attributes[name] = data
+        self._state_attributes["sep3"] = "---------------------------------------"
+        self._state_attributes["stats_future"] = self._stats_to_json(self._stats_future)
+        self._state_attributes["future"] = self.convert_to_json_list(self._future)

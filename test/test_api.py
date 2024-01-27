@@ -1,6 +1,7 @@
+import json
 from unittest import TestCase
 
-from custom_components.yan_tibber_client.api.api import TibberApi
+from custom_components.yan_tibber_client.api.api import TibberApi, Statistics
 from test.my_secrets import tibber_api_token
 
 
@@ -21,8 +22,15 @@ class TestTibberApi(TestCase):
 
     def test_get_price_data(self):
         api = TibberApi(tibber_api_token)
-        res = api.get_price_info()
-        print(res)
+        price_info = api.get_price_info()
+        formatted_json = json.dumps(price_info, indent=2)
+        print(formatted_json)
+
+    def test_get_current_price(self):
+        api = TibberApi(tibber_api_token)
+        price_info = api.get_price_info()
+        current = api.convert_to_hourly(price_info['current'])
+        print(current)
 
     def test_convert_to_list(self):
         api, today, tomorrow = self._get_today_tomorrow()
@@ -56,7 +64,7 @@ class TestTibberApi(TestCase):
         values = api.find_values_in_distance(5, 0.22, today)
         TestTibberApi.print_list(values)
 
-    def test_blubber(self):
+    def test_statistics(self):
         api, today, tomorrow = self._get_today_tomorrow()
-        total = today
-        total.extend(tomorrow)
+        stats_today = Statistics(today)
+        print(stats_today)

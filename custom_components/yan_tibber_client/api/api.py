@@ -2,7 +2,6 @@
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import List
 
 import numpy as np
 import requests
@@ -13,26 +12,27 @@ _LOGGER = logging.getLogger(__name__)
 
 # https://community.home-assistant.io/t/tibber-sensor-for-future-price-tomorrow/253818/23
 class PriceLevel(Enum):
-    """Price level based on trailing price average (3 days for hourly values and 30 days for daily values)"""
-    """The price is greater than 60 % and smaller or equal to 90 % compared to average price."""
-    VERY_CHEAP = -2
-    CHEAP = -1
+    """Price level based on trailing price average (3 days for hourly values and 30 days for daily values)."""
+
+    VERY_CHEAP = "VERY_CHEAP"
     """The price is smaller or equal to 60 % compared to average price."""
-    NORMAL = 0
+    CHEAP = "CHEAP"
+    """The price is greater than 60 % and smaller or equal to 90 % compared to average price."""
+    NORMAL = "NORMAL"
     """The price is greater than 90 % and smaller than 115 % compared to average price."""
-    EXPENSIVE = 1
+    EXPENSIVE = "EXPENSIVE"
     """The price is greater or equal to 115 % and smaller than 140 % compared to average price."""
-    VERY_EXPENSIVE = 1
+    VERY_EXPENSIVE = "VERY_EXPENSIVE"
     """The price is greater or equal to 140 % compared to average price."""
 
     @staticmethod
-    def from_string(pl_str: str):
+    def from_string(pl_str: str):  # noqa: D102
         mapping = {
-            'VERY_CHEAP': PriceLevel.VERY_CHEAP,
-            'CHEAP': PriceLevel.CHEAP,
-            'NORMAL': PriceLevel.NORMAL,
-            'EXPENSIVE': PriceLevel.EXPENSIVE,
-            'VERY_EXPENSIVE': PriceLevel.VERY_EXPENSIVE,
+            "VERY_CHEAP": PriceLevel.VERY_CHEAP,
+            "CHEAP": PriceLevel.CHEAP,
+            "NORMAL": PriceLevel.NORMAL,
+            "EXPENSIVE": PriceLevel.EXPENSIVE,
+            "VERY_EXPENSIVE": PriceLevel.VERY_EXPENSIVE,
         }
 
         return mapping.get(pl_str.upper())
@@ -40,51 +40,54 @@ class PriceLevel(Enum):
 
 class LoadingLevel(Enum):
     """The price is greater than 60 % and smaller or equal to 90 % compared to average price."""
-    UNKNOWN = 0
+
+    UNKNOWN = "UNKNOWN"
     """Not determined yet."""
-    UNSPECTACULAR = 1
+    UNSPECTACULAR = "UNSPECTACULAR"
     """Not expensive nor cheap."""
-    LOAD_FROM_NET = 2
+    LOAD_FROM_NET = "LOAD_FROM_NET"
     """Loading from net makes sense as cheap enough."""
-    UNLOAD_BATTERY = 3
+    UNLOAD_BATTERY = "UNLOAD_BATTERY"
     """Net is expensive thus battery unloading make sense."""
 
 
 class ExtremaType(Enum):
     """Minimum or Maximum."""
-    NONE = 0
+
+    NONE = "NONE"
     """Not minimum nor maximum."""
-    MIN = 1
+    MIN = "MIN"
     """Absolute minimum."""
-    REL_MIN = 2
+    REL_MIN = "REL_MIN"
     """Relative minimum."""
-    REL_MAX = 3
+    REL_MAX = "REL_MAX"
     """Relative maximum."""
-    MAX = 4
+    MAX = "MAX"
     """Absolute maximum."""
 
 
-class HourlyLevel():
+class HourlyData:  # noqa: D101
     _level: PriceLevel
     _starts_at: datetime
     _price: float
+    """Price in Cent/100*Kwh."""
     _loading_level: LoadingLevel
     _extrema_type: ExtremaType
 
     @property
-    def level(self) -> PriceLevel:
+    def level(self) -> PriceLevel:  # noqa: D102
         return self._level
 
     @property
-    def starts_at(self) -> datetime:
+    def starts_at(self) -> datetime:  # noqa: D102
         return self._starts_at
 
     @property
-    def price(self) -> float:
+    def price(self) -> float:  # noqa: D102
         return self._price
 
     @property
-    def loading_level(self) -> LoadingLevel:
+    def loading_level(self) -> LoadingLevel:  # noqa: D102
         return self._loading_level
 
     @loading_level.setter
@@ -92,7 +95,7 @@ class HourlyLevel():
         self._loading_level = value
 
     @property
-    def extrema_type(self) -> ExtremaType:
+    def extrema_type(self) -> ExtremaType:  # noqa: D102
         return self._extrema_type
 
     @extrema_type.setter
@@ -101,52 +104,149 @@ class HourlyLevel():
 
     def __init__(self, level: PriceLevel, starts_at: datetime, price: float) -> None:  # noqa: D107
         self._level = level
-        self._starts_at = starts_at.replace(tzinfo=None)
+        self._starts_at = (
+            starts_at.replace(tzinfo=None) if starts_at is not None else None
+        )
         self._price = price
         self._loading_level = LoadingLevel.UNKNOWN
         self._extrema_type = ExtremaType.NONE
 
-    def __str__(self) -> str:
-        return f"HourlyLevel({self.level}, startsAt={self.starts_at}, {self.price}€, {self.loading_level}, {self.extrema_type})"
+    def __str__(self) -> str:  # noqa: D105
+        return f"HourlyLevel({self.level}, startsAt={self.starts_at}, {self.price} @/kWh, {self.loading_level}, {self.extrema_type})"
+
+
+class Statistics:  # noqa: D101
+    _start_time: datetime
+    _end_time: datetime
+    """Last time slot."""
+    _avg_level: float  # PriceLevel
+    _avg_price: float
+    _min_price: float
+    _min_price_at: datetime
+    _max_price: float
+    _max_price_at: datetime
+
+    @property
+    def start_time(self) -> datetime:  # noqa: D102
+        return self._start_time
+
+    @property
+    def end_time(self) -> datetime:  # noqa: D102
+        return self._end_time
+
+    @property
+    def avg_level(self) -> float:  # noqa: D102
+        return self._avg_level
+
+    @property
+    def min_price(self) -> float:  # noqa: D102
+        return self._min_price
+
+    @property
+    def min_price_at(self) -> datetime:  # noqa: D102
+        return self._min_price_at
+
+    @property
+    def avg_price(self) -> float:  # noqa: D102
+        return self._avg_price
+
+    @property
+    def max_price(self) -> float:  # noqa: D102
+        return self._max_price
+
+    @property
+    def max_price_at(self) -> datetime:  # noqa: D102
+        return self._max_price_at
+
+    @staticmethod
+    def _level_to_float(pl: PriceLevel) -> float:
+        if pl == PriceLevel.VERY_CHEAP:
+            return -2
+        if pl == PriceLevel.CHEAP:
+            return -1
+        if pl == PriceLevel.NORMAL:
+            return 0
+        if pl == PriceLevel.EXPENSIVE:
+            return 1
+        if pl == PriceLevel.VERY_EXPENSIVE:
+            return 2
+
+    def __init__(self, arr: list[HourlyData]) -> None:  # noqa: D107
+        self._start_time = arr[0].starts_at
+        self._end_time = arr[len(arr) - 1].starts_at
+
+        np_arr = TibberApi.get_prices_numpy(arr)
+        self._avg_price = np.mean(np_arr)
+        hld = TibberApi.absolute_maximum(arr)
+        self._max_price = hld.price
+        self._max_price_at = hld.starts_at
+
+        hld = TibberApi.absolute_minimum(arr)
+        self._min_price = hld.price
+        self._min_price_at = hld.starts_at
+
+        res = []
+        for x in arr:
+            res.append(self._level_to_float(x.level))
+        np_arr = np.array(res)
+        # TODO change to enum again
+        self._avg_level = np.mean(np_arr)
 
 
 class TibberApi:  # noqa: D101
     def __init__(self, token) -> None:  # noqa: D107
         self._token = token
 
-    def get_price_info(self) -> []:
-        headers = {'Accept-Language': 'sv-SE',
-                   'User-Agent': 'REST',
-                   'Content-Type': 'application/json; charset=utf-8',
-                   'Authorization': self._token}
-        url = 'https://api.tibber.com/v1-beta/gql'
+    def get_price_info(self) -> []:  # noqa: D102
+        headers = {
+            "Accept-Language": "sv-SE",
+            "User-Agent": "REST",
+            "Content-Type": "application/json; charset=utf-8",
+            "Authorization": self._token,
+        }
+        url = "https://api.tibber.com/v1-beta/gql"
         payload = '{ "query": "{ viewer { homes { currentSubscription { priceInfo { current { total currency level } today { total startsAt level } tomorrow { total startsAt level }}}}}}" }'
-        response = requests.post(url, headers=headers, data=payload)
+        response = requests.post(url, headers=headers, data=payload, timeout=10)
         if response.status_code == requests.codes.ok:
             data = response.json()
-            return data["data"]["viewer"]["homes"][0]["currentSubscription"]["priceInfo"]
+            return data["data"]["viewer"]["homes"][0]["currentSubscription"][
+                "priceInfo"
+            ]
         else:
             _LOGGER.error("Failed to get price data, %s", response.text)
             return []
 
     @staticmethod
-    def convert_to_list(arr: []) -> List[HourlyLevel]:
-        res: List[HourlyLevel] = []
+    def convert_to_list(arr: []) -> list[HourlyData]:  # noqa: D102
+        res: list[HourlyData] = []
         for x in arr:
-            hl = HourlyLevel(PriceLevel.from_string(x['level']), datetime.fromisoformat(x['startsAt']), x['total'])
+            hl = HourlyData(
+                PriceLevel.from_string(x["level"]),
+                datetime.fromisoformat(x["startsAt"]),
+                x["total"],
+            )
             res.append(hl)
         return res
 
     @staticmethod
-    def filter_future_items(arr: List[HourlyLevel]) -> List[HourlyLevel]:
+    def convert_to_hourly(current) -> HourlyData:  # noqa: D102
+        res = HourlyData(
+            PriceLevel.from_string(current["level"]),
+            None,
+            current["total"],
+        )
+        return res
+
+    @staticmethod
+    def filter_future_items(arr: list[HourlyData]) -> list[HourlyData]:
         """Filter out all items with startsAt <= now."""
         now = datetime.now()
 
-        filtered_values: List[HourlyLevel] = [x for x in arr if x.starts_at > now]
+        filtered_values: list[HourlyData] = [x for x in arr if x.starts_at > now]
         return filtered_values
 
     @staticmethod
-    def _get_prices_numpy(arr: List[HourlyLevel]) -> np.array:
+    def get_prices_numpy(arr: list[HourlyData]) -> np.array:
         res = []
         for x in arr:
             res.append(x.price)
@@ -154,11 +254,11 @@ class TibberApi:  # noqa: D101
         return np.array(res)
 
     @staticmethod
-    def relative_minima(arr: List[HourlyLevel]) -> List[HourlyLevel]:
-        data_array = TibberApi._get_prices_numpy(arr)
+    def relative_minima(arr: list[HourlyData]) -> list[HourlyData]:  # noqa: D102
+        data_array = TibberApi.get_prices_numpy(arr)
         extrema_indices = argrelextrema(data_array, np.less)[0]
 
-        res: List[HourlyLevel] = []
+        res: list[HourlyData] = []
         for x in extrema_indices:
             val = arr[x]
             val.extrema_type = ExtremaType.REL_MIN
@@ -167,11 +267,11 @@ class TibberApi:  # noqa: D101
         return res
 
     @staticmethod
-    def relative_maxima(arr: List[HourlyLevel]) -> List[HourlyLevel]:
-        data_array = TibberApi._get_prices_numpy(arr)
+    def relative_maxima(arr: list[HourlyData]) -> list[HourlyData]:  # noqa: D102
+        data_array = TibberApi.get_prices_numpy(arr)
         extrema_indices = argrelextrema(data_array, np.greater)[0]
 
-        res: List[HourlyLevel] = []
+        res: list[HourlyData] = []
         for x in extrema_indices:
             val = arr[x]
             val.extrema_type = ExtremaType.REL_MAX
@@ -180,10 +280,10 @@ class TibberApi:  # noqa: D101
         return res
 
     @staticmethod
-    def relative_extrema(arr: List[HourlyLevel]) -> List[HourlyLevel]:
+    def relative_extrema(arr: list[HourlyData]) -> list[HourlyData]:  # noqa: D102
         minima = TibberApi.relative_minima(arr)
         # determine absolute MIN
-        min_x: HourlyLevel = None
+        min_x: HourlyData = None
         for x in minima:
             if min_x is None or x.price < min_x.price:
                 min_x = x
@@ -191,7 +291,7 @@ class TibberApi:  # noqa: D101
 
         maxima = TibberApi.relative_maxima(arr)
         # determine absolute MAX
-        max_x: HourlyLevel = None
+        max_x: HourlyData = None
         for x in maxima:
             if max_x is None or x.price > max_x.price:
                 max_x = x
@@ -204,28 +304,30 @@ class TibberApi:  # noqa: D101
         return sorted_extrama
 
     @staticmethod
-    def absolute_minimum(arr: List[HourlyLevel]) -> float:
-        res: float = 99
+    def absolute_minimum(arr: list[HourlyData]) -> HourlyData:  # noqa: D102
+        res: HourlyData = None
         for x in arr:
-            if x.price < res:
-                res = x.price
+            if res is None or x.price < res.price:
+                res = x
 
         res.extrema_type = ExtremaType.MIN
         return res
 
     @staticmethod
-    def absolute_maximum(arr: List[HourlyLevel]) -> float:
-        res: float = 0
+    def absolute_maximum(arr: list[HourlyData]) -> HourlyData:  # noqa: D102
+        res: HourlyData = None
         for x in arr:
-            if x.price > res:
-                res = x.price
+            if res is None or x.price > res.price:
+                res = x
 
         return res
 
     @staticmethod
-    def find_values_in_distance(delta_perc: int, min_max_val: float, arr: List[HourlyLevel]) -> List[HourlyLevel]:
+    def find_values_in_distance(
+            delta_perc: int, min_max_val: float, arr: list[HourlyData]
+    ) -> list[HourlyData]:
         """Return all hourly level values that are at maximum delta_perc % distance to a max or min value."""
-        res: List[HourlyLevel] = []
+        res: list[HourlyData] = []
         max_distance = abs(min_max_val * float(delta_perc) / 100)
 
         for x in arr:
