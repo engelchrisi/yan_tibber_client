@@ -127,7 +127,7 @@ class TibberPricesSensor(Entity):  # noqa: D101
     @staticmethod
     def _format_date(dt: datetime) -> str:
         local_timestamp = dt_util.as_local(dt)
-        return (local_timestamp.isoformat(),)
+        return local_timestamp.isoformat()
 
     @staticmethod
     def _statistics_to_json(x: Statistics) -> {}:  # noqa: D102
