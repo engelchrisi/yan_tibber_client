@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import logging
 
 import voluptuous as vol
+
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import CONF_TOKEN
 from homeassistant.core import HomeAssistant
@@ -12,16 +13,16 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
-from .api.api import ExtremaType, HourlyData, LoadingLevel, Statistics, TibberApi
-from .const import PRICE_SENSOR_NAME
+from .api.api import HourlyData, Statistics, TibberApi
+from .const import CONF_LOAD_UNLOAD_LOSS_PERC, PRICE_SENSOR_NAME
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
         vol.Required(CONF_TOKEN): cv.string,
+        vol.Optional(CONF_LOAD_UNLOAD_LOSS_PERC, default=20): cv.positive_int,
         # vol.Optional(CONF_DAILY_USAGE, default=True): cv.boolean,
-        # vol.Optional(CONF_USAGE_DAYS, default=10): cv.positive_int,
         # vol.Optional(CONF_DATE_FORMAT, default="%b %d %Y"): cv.string,
     }
 )
@@ -31,19 +32,18 @@ SCAN_INTERVAL = timedelta(minutes=30)
 
 
 async def async_setup_platform(  # noqa: D103
-        hass: HomeAssistant,
-        config: ConfigType,
-        async_add_entities: AddEntitiesCallback,
-        discovery_info: DiscoveryInfoType | None = None,
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     token = config.get(CONF_TOKEN)
-
-    api = TibberApi(token, dt_util.DEFAULT_TIME_ZONE)
+    perc_loss_load_unload = config.get(CONF_LOAD_UNLOAD_LOSS_PERC)
+    api = TibberApi(token, perc_loss_load_unload, dt_util.DEFAULT_TIME_ZONE)
 
     _LOGGER.debug("Setting up sensor(s)")
 
-    sensors = []
-    sensors.append(TibberPricesSensor(api))
+    sensors = [TibberPricesSensor(api)]
     async_add_entities(sensors, True)
 
 
@@ -89,10 +89,10 @@ class TibberPricesSensor(Entity):  # noqa: D101
         }
         if x.starts_at is not None:
             res["starts_at"] = TibberPricesSensor._format_date(x.starts_at)
-        if x.loading_level is not LoadingLevel.UNKNOWN:
-            res["loading_level"] = x.loading_level
-        if x.extrema_type is not ExtremaType.NONE:
-            res["extrema_type"] = x.extrema_type
+        if x.loading_level is not None:
+            res["loading_level"] = x.loading_level.value
+        if x.extrema_type is not None:
+            res["extrema_type"] = x.extrema_type.value
 
         return res
 
@@ -136,9 +136,11 @@ class TibberPricesSensor(Entity):  # noqa: D101
         self._state = TibberPricesSensor._format_price(current.price)
 
         today = api.convert_to_list(price_info["today"])
+        api.mark_extrema(today)
         stats_today = Statistics(today)
 
         tomorrow = api.convert_to_list(price_info["tomorrow"])
+        api.mark_extrema(tomorrow)
         # tomorrow value appears around 12:00
         if tomorrow is not None and len(tomorrow) > 0:
             stats_tomorrow = Statistics(tomorrow)
@@ -147,7 +149,12 @@ class TibberPricesSensor(Entity):  # noqa: D101
 
         future = api.filter_future_items(today)
         future.extend(tomorrow)
+        api.mark_extrema(future)
+        api.determine_loading_levels(future)
         stats_future = Statistics(future)
+
+        ######################################################
+        # Prepare sensor attributes
 
         self._state_attributes["last_update"] = TibberPricesSensor._format_date(now)
         self._state_attributes["current"] = TibberPricesSensor.hourly_data_to_json(

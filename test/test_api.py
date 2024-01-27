@@ -10,6 +10,7 @@ from test.my_secrets import tibber_api_token
 
 class TestTibberApi(TestCase):
     DEFAULT_TIME_ZONE = pytz.timezone('Europe/Berlin')  # pytz.timezone('US/Eastern')
+    PERC_LOSS_LOAD_UNLOAD = 20
 
     @staticmethod
     def print_list(arr: []):
@@ -17,14 +18,14 @@ class TestTibberApi(TestCase):
             print(x)
 
     def _get_today_tomorrow(self):
-        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
+        api = TibberApi(tibber_api_token, self.PERC_LOSS_LOAD_UNLOAD, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         today = api.convert_to_list(price_info['today'])
         tomorrow = api.convert_to_list(price_info['tomorrow'])
         return api, today, tomorrow
 
     def test_get_price_data(self):
-        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
+        api = TibberApi(tibber_api_token, self.PERC_LOSS_LOAD_UNLOAD, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         formatted_json = json.dumps(price_info, indent=2)
         print(formatted_json)
@@ -37,7 +38,7 @@ class TestTibberApi(TestCase):
         self.assertTrue(tdt < now)
 
     def test_get_current_price(self):
-        api = TibberApi(tibber_api_token, self.DEFAULT_TIME_ZONE)
+        api = TibberApi(tibber_api_token, self.PERC_LOSS_LOAD_UNLOAD, self.DEFAULT_TIME_ZONE)
         price_info = api.get_price_info()
         current = api.convert_to_hourly(price_info['current'])
         print(current)
@@ -74,10 +75,15 @@ class TestTibberApi(TestCase):
         values = api.relative_extrema(today)
         TestTibberApi.print_list(values)
 
-    def test_find_values_in_distance(self):
+    def test_determine_loading_levels(self):
         api, today, tomorrow = self._get_today_tomorrow()
-        values = api.find_values_in_distance(5, 0.22, today)
-        TestTibberApi.print_list(values)
+        future = api.filter_future_items(today)
+        future.extend(tomorrow)
+        # mark Min + Max
+        api.mark_extrema(future)
+
+        api.determine_loading_levels(future)
+        TestTibberApi.print_list(future)
 
     def test_statistics(self):
         api, today, tomorrow = self._get_today_tomorrow()

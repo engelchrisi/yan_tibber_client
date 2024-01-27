@@ -6,4 +6,5 @@ Yet another tibber client for Home Assistant
 sensor:
   - platform: yan_tibber_client
     token: "<my_tibber_dev_token>"
+    perc_loss_load_unload: 20
 ```

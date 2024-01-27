@@ -18,3 +18,4 @@ Clone this depot to adapt your own SMA device:
 """
 
 PRICE_SENSOR_NAME: Final = "Tibber Prices"
+CONF_LOAD_UNLOAD_LOSS_PERC: Final = "perc_loss_load_unload"

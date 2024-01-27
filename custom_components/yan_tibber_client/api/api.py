@@ -1,7 +1,7 @@
 """Tibber API."""
-import logging
 from datetime import datetime, tzinfo
 from enum import Enum
+import logging
 
 import numpy as np
 import requests
@@ -39,12 +39,8 @@ class PriceLevel(Enum):
 
 
 class LoadingLevel(Enum):
-    """The price is greater than 60 % and smaller or equal to 90 % compared to average price."""
+    """The slots where loading and unloading makes sense as they have at least perc_loss_load_unload distance."""
 
-    UNKNOWN = "UNKNOWN"
-    """Not determined yet."""
-    UNSPECTACULAR = "UNSPECTACULAR"
-    """Not expensive nor cheap."""
     LOAD_FROM_NET = "LOAD_FROM_NET"
     """Loading from net makes sense as cheap enough."""
     UNLOAD_BATTERY = "UNLOAD_BATTERY"
@@ -54,8 +50,6 @@ class LoadingLevel(Enum):
 class ExtremaType(Enum):
     """Minimum or Maximum."""
 
-    NONE = "NONE"
-    """Not minimum nor maximum."""
     MIN = "MIN"
     """Absolute minimum."""
     REL_MIN = "REL_MIN"
@@ -106,8 +100,8 @@ class HourlyData:  # noqa: D101
         self._level = level
         self._starts_at = starts_at
         self._price = price
-        self._loading_level = LoadingLevel.UNKNOWN
-        self._extrema_type = ExtremaType.NONE
+        self._loading_level = None
+        self._extrema_type = None
 
     def __str__(self) -> str:  # noqa: D105
         return f"HourlyLevel({self.level}, startsAt={self.starts_at}, {self.price} @/kWh, {self.loading_level}, {self.extrema_type})"
@@ -177,9 +171,17 @@ class Statistics:  # noqa: D101
 
 
 class TibberApi:  # noqa: D101
-    def __init__(self, token: str, time_zone: tzinfo) -> None:  # noqa: D107
+    def __init__(  # noqa: D107
+        self, token: str, perc_loss_load_unload: int, time_zone: tzinfo
+    ) -> None:
         self._token = token
+        self._perc_loss_load_unload = perc_loss_load_unload
         self._time_zone = time_zone
+
+    @property
+    def perc_loss_load_unload(self) -> int:
+        """Percentag loss for loading + unloading."""
+        return self._perc_loss_load_unload
 
     def get_price_info(self) -> []:  # noqa: D102
         headers = {
@@ -287,6 +289,12 @@ class TibberApi:  # noqa: D101
         return sorted_extrama
 
     @staticmethod
+    def mark_extrema(arr: list[HourlyData]) -> None:  # noqa: D102
+        """Mark Min + Max."""
+        TibberApi.absolute_minimum(arr)
+        TibberApi.absolute_maximum(arr)
+
+    @staticmethod
     def absolute_minimum(arr: list[HourlyData]) -> HourlyData:  # noqa: D102
         res: HourlyData = None
         for x in arr:
@@ -306,15 +314,20 @@ class TibberApi:  # noqa: D101
         res.extrema_type = ExtremaType.MAX
         return res
 
-    @staticmethod
-    def find_values_in_distance(
-            delta_perc: int, min_max_val: float, arr: list[HourlyData]
-    ) -> list[HourlyData]:
-        """Return all hourly level values that are at maximum delta_perc % distance to a max or min value."""
-        res: list[HourlyData] = []
-        max_distance = abs(min_max_val * float(delta_perc) / 100)
+    def determine_loading_levels(self, arr: list[HourlyData]) -> None:
+        """Mark all slots which are suitable for loading and unloading of the battery, which have at least perc_loss_load_unload distance."""
+        factor = 1.0 + self.perc_loss_load_unload / 100
 
-        for x in arr:
-            if abs(x.price - min_max_val) <= max_distance:
-                res.append(x)
-        return res
+        for i in range(len(arr) - 1):
+            hd1 = arr[i]
+            # current slot is suitable for loading if there is a successor slot with price >= max_price
+            max_price = hd1.price * factor
+            found = False
+            for j in range(i + 1, len(arr) - 1):
+                hd2 = arr[j]
+                if hd2.price >= max_price:
+                    found = True
+                    hd2.loading_level = LoadingLevel.UNLOAD_BATTERY
+
+            if found:
+                hd1.loading_level = LoadingLevel.LOAD_FROM_NET
