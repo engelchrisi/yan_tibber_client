@@ -301,7 +301,8 @@ class TibberApi:  # noqa: D101
             if res is None or x.price < res.price:
                 res = x
 
-        res.extrema_type = ExtremaType.MIN
+        if res is not None:
+            res.extrema_type = ExtremaType.MIN
         return res
 
     @staticmethod
@@ -311,7 +312,8 @@ class TibberApi:  # noqa: D101
             if res is None or x.price > res.price:
                 res = x
 
-        res.extrema_type = ExtremaType.MAX
+        if res is not None:
+            res.extrema_type = ExtremaType.MAX
         return res
 
     def determine_loading_levels(self, arr: list[HourlyData]) -> None:
