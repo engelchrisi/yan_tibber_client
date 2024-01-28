@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import pytz
 
-from custom_components.yan_tibber_client.api.api import TibberApi, Statistics
+from custom_components.yan_tibber_client.api.api import TibberApi, Statistics, LoadingLevel
 from test.my_secrets import tibber_api_token
 
 
@@ -85,6 +85,23 @@ class TestTibberApi(TestCase):
         api.determine_loading_levels(future)
         TestTibberApi.print_list(future)
 
+        future_load_from_net = api.filter_loading_level(future, LoadingLevel.LOAD_FROM_NET)
+        print("future_load_from_net:")
+        TestTibberApi.print_list(future_load_from_net)
+        future_unload_battery = api.filter_loading_level(future, LoadingLevel.UNLOAD_BATTERY)
+        print("future_unload_battery:")
+        TestTibberApi.print_list(future_unload_battery)
+
+    def test_merge_loading_level(self):
+        api, today, tomorrow = self._get_today_tomorrow()
+        api.determine_loading_levels(today)
+
+        price_info = api.get_price_info()
+        current = api.convert_to_hourly(price_info['current'])
+
+        api.merge_loading_level(current, today)
+        print(current)
+        
     def test_statistics(self):
         api, today, tomorrow = self._get_today_tomorrow()
         stats_today = Statistics(today)

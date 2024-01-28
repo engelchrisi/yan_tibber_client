@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.util import dt as dt_util
 
-from .api.api import HourlyData, Statistics, TibberApi
+from .api.api import HourlyData, LoadingLevel, Statistics, TibberApi
 from .const import CONF_LOAD_UNLOAD_LOSS_PERC, PRICE_SENSOR_NAME
 
 _LOGGER = logging.getLogger(__name__)
@@ -138,19 +138,37 @@ class TibberPricesSensor(Entity):  # noqa: D101
         today = api.convert_to_list(price_info["today"])
         api.mark_extrema(today)
         stats_today = Statistics(today)
+        api.determine_loading_levels(today)
+        # take over corresponding loading level from today array
+        api.merge_loading_level(current, today)
+
+        today_load_from_net = api.filter_loading_level(
+            today, LoadingLevel.LOAD_FROM_NET
+        )
+        today_unload_battery = api.filter_loading_level(
+            today, LoadingLevel.UNLOAD_BATTERY
+        )
 
         tomorrow = api.convert_to_list(price_info["tomorrow"])
         api.mark_extrema(tomorrow)
         # tomorrow value appears around 12:00
         if tomorrow is not None and len(tomorrow) > 0:
             stats_tomorrow = Statistics(tomorrow)
+            api.determine_loading_levels(tomorrow)
+            tomorrow_load_from_net = api.filter_loading_level(
+                tomorrow, LoadingLevel.LOAD_FROM_NET
+            )
+            tomorrow_unload_battery = api.filter_loading_level(
+                tomorrow, LoadingLevel.UNLOAD_BATTERY
+            )
         else:
             stats_tomorrow = None
+            tomorrow_load_from_net = []
+            tomorrow_unload_battery = []
 
         future = api.filter_future_items(today)
         future.extend(tomorrow)
         api.mark_extrema(future)
-        api.determine_loading_levels(future)
         stats_future = Statistics(future)
 
         ######################################################
@@ -164,6 +182,12 @@ class TibberPricesSensor(Entity):  # noqa: D101
         self._state_attributes["sep1"] = "========================================"
         self._state_attributes["today_stats"] = self._statistics_to_json(stats_today)
         self._state_attributes["today"] = self.convert_to_json_list(today)
+        self._state_attributes["today_load_from_net"] = self.convert_to_json_list(
+            today_load_from_net
+        )
+        self._state_attributes["today_unload_battery"] = self.convert_to_json_list(
+            today_unload_battery
+        )
 
         # tomorrow value appears around 12:00
         self._state_attributes["sep2"] = "========================================"
@@ -172,6 +196,12 @@ class TibberPricesSensor(Entity):  # noqa: D101
                 stats_tomorrow
             )
             self._state_attributes["tomorrow"] = self.convert_to_json_list(tomorrow)
+            self._state_attributes[
+                "tomorrow_load_from_net"
+            ] = self.convert_to_json_list(tomorrow_load_from_net)
+            self._state_attributes[
+                "tomorrow_unload_battery"
+            ] = self.convert_to_json_list(tomorrow_unload_battery)
         else:
             self._state_attributes["stats_tomorrow"] = None
             self._state_attributes["tomorrow"] = []

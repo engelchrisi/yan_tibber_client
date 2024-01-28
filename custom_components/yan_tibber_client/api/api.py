@@ -1,7 +1,7 @@
 """Tibber API."""
+import logging
 from datetime import datetime, tzinfo
 from enum import Enum
-import logging
 
 import numpy as np
 import requests
@@ -172,7 +172,7 @@ class Statistics:  # noqa: D101
 
 class TibberApi:  # noqa: D101
     def __init__(  # noqa: D107
-        self, token: str, perc_loss_load_unload: int, time_zone: tzinfo
+            self, token: str, perc_loss_load_unload: int, time_zone: tzinfo
     ) -> None:
         self._token = token
         self._perc_loss_load_unload = perc_loss_load_unload
@@ -191,7 +191,7 @@ class TibberApi:  # noqa: D101
             "Authorization": self._token,
         }
         url = "https://api.tibber.com/v1-beta/gql"
-        payload = '{ "query": "{ viewer { homes { currentSubscription { priceInfo { current { total currency level } today { total startsAt level } tomorrow { total startsAt level }}}}}}" }'
+        payload = '{ "query": "{ viewer { homes { currentSubscription { priceInfo { current { total startsAt level } today { total startsAt level } tomorrow { total startsAt level }}}}}}" }'
         response = requests.post(url, headers=headers, data=payload, timeout=10)
         if response.status_code == requests.codes.ok:
             data = response.json()
@@ -206,20 +206,16 @@ class TibberApi:  # noqa: D101
     def convert_to_list(arr: []) -> list[HourlyData]:  # noqa: D102
         res: list[HourlyData] = []
         for x in arr:
-            hl = HourlyData(
-                PriceLevel.from_string(x["level"]),
-                datetime.fromisoformat(x["startsAt"]),
-                x["total"],
-            )
-            res.append(hl)
+            hld = TibberApi.convert_to_hourly(x)
+            res.append(hld)
         return res
 
     @staticmethod
-    def convert_to_hourly(current) -> HourlyData:  # noqa: D102
+    def convert_to_hourly(hld) -> HourlyData:  # noqa: D102
         res = HourlyData(
-            PriceLevel.from_string(current["level"]),
-            None,
-            current["total"],
+            PriceLevel.from_string(hld["level"]),
+            datetime.fromisoformat(hld["startsAt"]),
+            hld["total"],
         )
         return res
 
@@ -228,6 +224,14 @@ class TibberApi:  # noqa: D101
         now = datetime.now(self._time_zone)
 
         filtered_values: list[HourlyData] = [x for x in arr if x.starts_at > now]
+        return filtered_values
+
+    @staticmethod
+    def filter_loading_level(
+            arr: list[HourlyData], level: LoadingLevel
+    ) -> list[HourlyData]:
+        """Filter out all items with a certain loading level."""
+        filtered_values: list[HourlyData] = [x for x in arr if x.loading_level is level]
         return filtered_values
 
     @staticmethod
@@ -333,3 +337,13 @@ class TibberApi:  # noqa: D101
 
             if found:
                 hd1.loading_level = LoadingLevel.LOAD_FROM_NET
+
+    @staticmethod
+    def merge_loading_level(current: HourlyData, today: list[HourlyData]) -> None:
+        """Find the loading level in today and set it to current."""
+        filtered_values: list[HourlyData] = [
+            x for x in today if x.starts_at == current.starts_at
+        ]
+        if len(filtered_values) > 0:
+            x = filtered_values[0]
+            current.loading_level = x.loading_level
