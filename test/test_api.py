@@ -101,8 +101,10 @@ class TestTibberApi(TestCase):
 
         api.merge_loading_level(current, today)
         print(current)
-        
+
     def test_statistics(self):
         api, today, tomorrow = self._get_today_tomorrow()
         stats_today = Statistics(today)
         print(stats_today)
+        stats_tomorrow = Statistics(tomorrow)
+        print(stats_tomorrow)

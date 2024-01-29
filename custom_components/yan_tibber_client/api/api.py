@@ -1,7 +1,7 @@
 """Tibber API."""
-import logging
 from datetime import datetime, tzinfo
 from enum import Enum
+import logging
 
 import numpy as np
 import requests
@@ -111,7 +111,7 @@ class Statistics:  # noqa: D101
     _start_time: datetime
     _end_time: datetime
     """Last time slot."""
-    _avg_level: float  # PriceLevel
+    _avg_level: PriceLevel
     _avg_price: float
     _min: HourlyData
     _max: HourlyData
@@ -125,7 +125,7 @@ class Statistics:  # noqa: D101
         return self._end_time
 
     @property
-    def avg_level(self) -> float:  # noqa: D102
+    def avg_level(self) -> PriceLevel:  # noqa: D102
         return self._avg_level
 
     @property
@@ -141,7 +141,7 @@ class Statistics:  # noqa: D101
         return self._max
 
     @staticmethod
-    def _level_to_float(pl: PriceLevel) -> float:
+    def _level_to_int(pl: PriceLevel) -> int:
         if pl == PriceLevel.VERY_CHEAP:
             return -2
         if pl == PriceLevel.CHEAP:
@@ -153,6 +153,19 @@ class Statistics:  # noqa: D101
         if pl == PriceLevel.VERY_EXPENSIVE:
             return 2
 
+    @staticmethod
+    def _level_from_int(pl: PriceLevel) -> PriceLevel:
+        if pl == -2:
+            return PriceLevel.VERY_CHEAP
+        if pl == -1:
+            return PriceLevel.CHEAP
+        if pl == 0:
+            return PriceLevel.NORMAL
+        if pl == 1:
+            return PriceLevel.EXPENSIVE
+        if pl == 2:
+            return PriceLevel.VERY_EXPENSIVE
+
     def __init__(self, arr: list[HourlyData]) -> None:  # noqa: D107
         self._start_time = arr[0].starts_at
         self._end_time = arr[len(arr) - 1].starts_at
@@ -162,17 +175,22 @@ class Statistics:  # noqa: D101
         self._max = TibberApi.absolute_maximum(arr)
         self._min = TibberApi.absolute_minimum(arr)
 
+        self._avg_level = self._calc_avg_pricelevel(arr)
+
+    @staticmethod
+    def _calc_avg_pricelevel(arr: list[HourlyData]) -> PriceLevel:
         res = []
         for x in arr:
-            res.append(self._level_to_float(x.level))
+            int_val = Statistics._level_to_int(x.level)
+            res.append(float(int_val))
         np_arr = np.array(res)
-        # TODO change to enum again
-        self._avg_level = np.mean(np_arr)
+        avg: float = np.mean(np_arr)
+        return Statistics._level_from_int(round(avg))
 
 
 class TibberApi:  # noqa: D101
     def __init__(  # noqa: D107
-            self, token: str, perc_loss_load_unload: int, time_zone: tzinfo
+        self, token: str, perc_loss_load_unload: int, time_zone: tzinfo
     ) -> None:
         self._token = token
         self._perc_loss_load_unload = perc_loss_load_unload
@@ -228,7 +246,7 @@ class TibberApi:  # noqa: D101
 
     @staticmethod
     def filter_loading_level(
-            arr: list[HourlyData], level: LoadingLevel
+        arr: list[HourlyData], level: LoadingLevel
     ) -> list[HourlyData]:
         """Filter out all items with a certain loading level."""
         filtered_values: list[HourlyData] = [x for x in arr if x.loading_level is level]

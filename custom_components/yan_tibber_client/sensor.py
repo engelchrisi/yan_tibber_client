@@ -118,6 +118,7 @@ class TibberPricesSensor(Entity):  # noqa: D101
         res = {
             "start_time": TibberPricesSensor._format_date(x.start_time),
             "end_time": TibberPricesSensor._format_date(x.end_time),
+            "avg_level": x.avg_level.value,
             "min": TibberPricesSensor.hourly_data_to_json(x.min),
             "avg_price": TibberPricesSensor._format_price(x.avg_price),
             "max": TibberPricesSensor.hourly_data_to_json(x.max),
