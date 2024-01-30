@@ -204,8 +204,10 @@ class TibberPricesSensor(Entity):  # noqa: D101
                 "tomorrow_unload_battery"
             ] = self.convert_to_json_list(tomorrow_unload_battery)
         else:
-            self._state_attributes["stats_tomorrow"] = None
+            self._state_attributes["tomorrow_stats"] = None
             self._state_attributes["tomorrow"] = []
+            self._state_attributes["tomorrow_load_from_net"] = []
+            self._state_attributes["tomorrow_unload_battery"] = []
 
         self._state_attributes["sep3"] = "========================================"
         self._state_attributes["future_stats"] = self._statistics_to_json(stats_future)
